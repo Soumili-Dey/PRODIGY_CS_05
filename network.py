@@ -1,6 +1,7 @@
 from scapy.all import *
 from scapy.layers.inet import IP, TCP, UDP
 import argparse
+import platform
 
 def packet_callback(packet):
     if packet.haslayer(IP):
@@ -8,46 +9,71 @@ def packet_callback(packet):
         ip_dst = packet[IP].dst
         proto = packet[IP].proto
         
-        protocol = ""
-        if proto == 6:
-            protocol = "TCP"
-        elif proto == 17:
-            protocol = "UDP"
-        else:
-            protocol = str(proto)
+        protocol = {6: "TCP", 17: "UDP"}.get(proto, str(proto))
         
         print(f"IP Packet: {ip_src} -> {ip_dst} | Protocol: {protocol}")
         
         if packet.haslayer(TCP):
-            print(f"TCP: Sport={packet[TCP].sport} -> Dport={packet[TCP].dport}")
-            if len(packet[TCP].payload) > 0:
+            print(f"  TCP: Sport={packet[TCP].sport} -> Dport={packet[TCP].dport}")
+            if packet[TCP].payload:
                 payload = bytes(packet[TCP].payload)
-                print(f"Payload: {payload[:50]}...")  # Show first 50 bytes
+                print(f"  Payload: {payload[:50].hex()}")  # Show hexdump for Windows compatibility
         
         elif packet.haslayer(UDP):
-            print(f"UDP: Sport={packet[UDP].sport} -> Dport={packet[UDP].dport}")
-            if len(packet[UDP].payload) > 0:
+            print(f"  UDP: Sport={packet[UDP].sport} -> Dport={packet[UDP].dport}")
+            if packet[UDP].payload:
                 payload = bytes(packet[UDP].payload)
-                print(f"Payload: {payload[:50]}...")
+                print(f"  Payload: {payload[:50].hex()}")
+
+def list_interfaces():
+    """List all available network interfaces"""
+    print("\nAvailable interfaces:")
+    for idx, iface in enumerate(get_windows_if_list()):
+        print(f"{idx + 1}. {iface['name']} ({iface['description']})")
+    print()
 
 def main():
-    parser = argparse.ArgumentParser(description="Simple Network Packet Analyzer")
-    parser.add_argument("-i", "--interface", help="Network interface to sniff on", default=None)
-    parser.add_argument("-c", "--count", help="Number of packets to capture", type=int, default=0)
+    parser = argparse.ArgumentParser(description="Windows Network Packet Analyzer")
+    parser.add_argument("-i", "--interface", type=int, help="Interface index to sniff on (use -l to list)")
+    parser.add_argument("-c", "--count", type=int, help="Number of packets to capture", default=0)
+    parser.add_argument("-l", "--list", action="store_true", help="List available interfaces")
     args = parser.parse_args()
     
+    if args.list:
+        list_interfaces()
+        return
+        
+    if args.interface:
+        ifaces = get_windows_if_list()
+        try:
+            iface_name = ifaces[args.interface - 1]['name']
+        except IndexError:
+            print(f"\nError: Invalid interface index. Use -l to list available interfaces.")
+            return
+    else:
+        iface_name = None  # Use default interface
+        
     print("Starting packet sniffer... Press Ctrl+C to stop.")
-    print("-----------------------------------------------")
+    print("------------------------------------------------")
     
     try:
-        if args.interface:
-            sniff(iface=args.interface, prn=packet_callback, count=args.count)
-        else:
-            sniff(prn=packet_callback, count=args.count)
+        # Windows-specific sniffing parameters
+        sniff(
+            iface=iface_name,
+            prn=packet_callback,
+            count=args.count,
+            store=0  # Important for Windows performance
+        )
     except KeyboardInterrupt:
         print("\nSniffer stopped by user.")
+    except PermissionError:
+        print("\nError: Permission denied. Run as Administrator!")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
 
 if __name__ == "__main__":
-    main()
+    # Check OS compatibility
+    if platform.system() != 'Windows':
+        print("\nError: This script is optimized for Windows. Use Linux version for other systems.")
+    else:
+        main()
