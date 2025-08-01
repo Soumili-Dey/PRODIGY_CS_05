@@ -17,6 +17,7 @@ A lightweight network packet analyzer using Scapy to capture and inspect IP, TCP
 - Python 3.6+
 - Scapy (`pip install scapy`)
 - Root/Administrator privileges
+- You must have Npcap installed (in WinPcap compatibility mode) and run your script as Administrator.
 
 ## Installation
 ```bash
